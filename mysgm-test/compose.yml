@@ -3,6 +3,8 @@ services:
   cli:
     build: ..
     network_mode: host
+    volumes:
+      - ./tmp:/tmp
   dht:
     build: ..
     network_mode: host
