@@ -1,13 +1,10 @@
 ---
 services:
-  builder:
-    image: rust:1.89
-    command: ["cargo", "build", "--release"]
-    working_dir: /usr/local/src/mysgm/mysgm
-    volumes:
-      - ..:/usr/local/src/mysgm
+  cli:
+    build: ..
+    network_mode: host
   dht:
-    build: ../opendht
+    build: ..
     network_mode: host
     command: ["dhtnode", "-p", "4222", "--proxyserver", "8000", "-D", "-v", "-s"]
     restart: unless-stopped
