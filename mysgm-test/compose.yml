@@ -1,12 +1,12 @@
 ---
 services:
   cli:
-    build: ..
+    build: ../workspace
     network_mode: host
     volumes:
       - ./mysgm:/tmp
   dht:
-    build: ..
+    build: ../workspace
     network_mode: host
     command: ["dhtnode", "-p", "4222", "--proxyserver", "8000", "-D", "-v", "-s", "-f", "/tmp/dht"]
     restart: unless-stopped
