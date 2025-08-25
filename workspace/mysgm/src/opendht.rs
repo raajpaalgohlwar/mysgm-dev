@@ -2,6 +2,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use reqwest::blocking::Client as ReqwestClient;
 use serde_json::{from_str as json_decode, to_string as json_encode};
 
+#[derive(Clone, Debug)]
 pub struct OpenDhtRestAdapter {
     proxy_address: String,
     proxy_port: u16,

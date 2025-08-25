@@ -1,12 +1,13 @@
 ---
 services:
-  cli:
-    build: ../workspace
-    network_mode: host
+  mysgm_builder:
+    image: rust:1.89
+    command: ["cargo", "build", "--release"]
+    working_dir: /usr/local/src/mysgm
     volumes:
-      - ./mysgm:/tmp
+      - ../workspace:/usr/local/src
   dht:
-    build: ../workspace
+    build: ../workspace/opendht
     network_mode: host
     command: ["dhtnode", "-p", "4222", "--proxyserver", "8000", "-D", "-v", "-s", "-f", "/tmp/dht"]
     restart: unless-stopped

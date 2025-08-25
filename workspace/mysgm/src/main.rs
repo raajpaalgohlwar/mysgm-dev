@@ -5,16 +5,9 @@ pub mod provider;
 pub mod state;
 
 use agent::MySgmAgent;
-use keys::SignatureKeyPair;
-use provider::MySgmProvider;
-use state::MySgmState;
 
 use clap::Parser;
-use hex::encode as hex_encode;
-use openmls::versions::ProtocolVersion;
-use openmls_rust_crypto::RustCrypto;
-use openmls_traits::{OpenMlsProvider, random::OpenMlsRand, types::Ciphersuite};
-use serde_json::{from_str as json_decode, to_string as json_encode};
+use openmls_traits::{OpenMlsProvider, random::OpenMlsRand};
 use std::io::{BufRead, stdin};
 
 /// Simple CLI for key generation
@@ -23,6 +16,9 @@ use std::io::{BufRead, stdin};
 struct CliArgs {
     /// Path to a JSON file to read (required)
     state_path: String,
+    /// Optional flag to create new state
+    #[arg(long)]
+    new: bool,
     /// Command to execute (optional; without a command, the agent will just refresh itself)
     command: Option<String>,
     /// Optional identifier to use as credential
@@ -46,64 +42,24 @@ fn main() {
     let args = CliArgs::parse();
     log::debug!("Parsed command-line arguments");
     log::info!("Command-line arguments: {args:?}");
-    // key-value database adapter
-    let adapter = opendht::OpenDhtRestAdapter::new("localhost", 8000);
-    // crypto
-    let crypto: RustCrypto = Default::default();
-    // state
-    log::debug!("Initializing agent");
-    log::debug!("Attempting to open state file for reading");
+    // load agent
     log::info!("Path to state file: {}", args.state_path);
-    let mut agent: MySgmAgent = match std::fs::read_to_string(&args.state_path) {
-        Ok(state_json) => {
-            log::debug!("Opened file; attempting to parse JSON");
-            match json_decode(&state_json) {
-                Ok(state) => {
-                    log::debug!("Parsed JSON successfully");
-                    MySgmAgent::new(MySgmProvider::new(state, crypto))
-                }
-                Err(e) => {
-                    log::error!("Failed to parse JSON in file: {e}");
-                    panic!("Terminated due to parse failure");
-                }
-            }
-        }
-        Err(e) => {
-            log::error!("Failed to read file: {e}");
-            log::warn!("Creating new state");
-            let ciphersuite = Ciphersuite::MLS_128_DHKEMX25519_CHACHA20POLY1305_SHA256_Ed25519;
-            let mls_version = ProtocolVersion::Mls10;
-            let signature_key_pair =
-                SignatureKeyPair::from_crypto(&crypto, ciphersuite.into()).unwrap();
-            let new_agent = MySgmAgent::new(MySgmProvider::new(
-                MySgmState::new(
-                    format!(
-                        "{}__{}",
-                        args.pid.clone(),
-                        hex_encode(signature_key_pair.public_key_raw())
-                            .chars()
-                            .take(8)
-                            .collect::<String>()
-                    ),
-                    signature_key_pair,
-                    ciphersuite,
-                    mls_version,
-                ),
-                crypto,
-            ));
+    let mut agent = match args.new {
+        true => {
+            log::debug!("Creating new state");
+            let new_agent = MySgmAgent::new(&args.pid).unwrap();
             log::debug!("Attempting to write fresh state to disk");
-            if let Err(e) = std::fs::write(
-                &args.state_path,
-                json_encode(new_agent.provider().state()).unwrap(),
-            ) {
-                log::error!("Failed to write state to disk: {e}");
-                panic!("Terminated due to write failure");
-            }
+            new_agent.save(&args.state_path).unwrap();
             log::debug!("Wrote state to disk");
             new_agent
         }
+        false => {
+            log::debug!("Attempting to load state from file");
+            MySgmAgent::load(&args.state_path).unwrap()
+        }
     };
     // collect key packages
+    /*
     log::debug!("Attempting to collect new key packages");
     loop {
         let kp_counter = agent.key_package_counter();
@@ -129,9 +85,10 @@ fn main() {
         }
     }
     log::debug!("Finished collecting new key packages");
+    */
     // done with agent
     log::debug!("Initialized MySGM agent");
-    log::info!("Agent: {agent:?}");
+    log::info!("Agent before processing command: {agent:?}");
     // process command
     log::debug!("Processing command");
     match args.command {
@@ -147,16 +104,16 @@ fn main() {
                                 log::info!("Group to use for export: {l}");
                                 log::info!("Label to use for export: {}", args.export_label);
                                 log::info!("Length to use for export: {}", args.export_length);
-                                match agent.export_from_group(
+                                match agent.export_encoded_from_group(
                                     &l,
                                     &args.export_label,
                                     args.export_length,
                                 ) {
-                                    Ok(exported) => {
-                                        println!("{}", hex::encode(&exported));
+                                    Ok(exporter) => {
+                                        println!("{exporter}");
                                     }
                                     Err(e) => {
-                                        log::error!("Failed to export secret: {e}");
+                                        log::error!("Error exporting: {e}");
                                     }
                                 }
                             }
@@ -168,31 +125,20 @@ fn main() {
                     }
                 }
                 "list_groups" => {
-                    for gid in agent.groups() {
+                    for gid in agent.group_ids() {
                         println!("{gid}");
                     }
                 }
                 "group_create" => {
-                    let gid_str = format!(
-                        "{}__{}",
-                        args.gid,
-                        hex::encode(agent.provider().rand().random_vec(4).unwrap())
-                    );
-                    match agent.create_group(&gid_str) {
-                        Ok(()) => {
-                            log::info!("Created group with ID: {gid_str}");
-                        }
-                        Err(e) => {
-                            log::error!("Failed to create group: {e}");
-                        }
-                    }
+                    agent.create_group(&args.gid).unwrap();
                 }
                 "list_agents" => {
-                    for kp_id in agent.identities() {
-                        println!("{kp_id}");
+                    for pid in agent.agent_ids() {
+                        println!("{pid}");
                     }
                 }
                 "advertise" => {
+                    /*
                     let kp_counter = agent.key_package_counter();
                     loop {
                         log::debug!("Emplacing new key package at position: {kp_counter}");
@@ -214,6 +160,7 @@ fn main() {
                             }
                         }
                     }
+                        */
                 }
                 _ => {
                     log::error!("Received unknown command");
@@ -225,15 +172,10 @@ fn main() {
         }
     }
     log::debug!("Finished processing command");
+    log::info!("Agent after processing command: {agent:?}");
     // save state
     log::debug!("Attempting to write state back to disk");
-    if let Err(e) = std::fs::write(
-        &args.state_path,
-        json_encode(agent.provider().state()).unwrap(),
-    ) {
-        log::error!("Failed to write state to disk: {e}");
-        panic!("Terminated due to write failure");
-    }
+    agent.save(&args.state_path).unwrap();
     log::debug!("Wrote state to disk");
     // done!
 }

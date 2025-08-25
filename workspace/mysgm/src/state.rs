@@ -1,11 +1,7 @@
 use super::keys::SignatureKeyPair;
 
 use hex::{decode as hex_decode, encode as hex_encode};
-use openmls::{
-    group::GroupId,
-    key_packages::{KeyPackage, key_package_in::KeyPackageIn},
-    versions::ProtocolVersion,
-};
+use openmls::{key_packages::KeyPackage, versions::ProtocolVersion};
 use openmls_traits::{
     storage::{CURRENT_VERSION, Entity, StorageProvider, traits},
     types::Ciphersuite,
@@ -22,6 +18,8 @@ pub struct MySgmState {
     key_package_counter: u64,
     welcome_counter: u64,
     key_packages: HashMap<String, KeyPackage>,
+    key_package_log: Vec<KeyPackage>,
+    agent_ids: HashMap<String, usize>,
     group_ids: Vec<String>,
     openmls_values: OpenMlsKeyValueStore,
 }
@@ -41,6 +39,8 @@ impl MySgmState {
             key_package_counter: 0,
             welcome_counter: 0,
             key_packages: HashMap::new(),
+            key_package_log: Vec::new(),
+            agent_ids: HashMap::new(),
             group_ids: Vec::new(),
             openmls_values: Default::default(),
         }
@@ -60,25 +60,16 @@ impl MySgmState {
     pub fn openmls_values(&self) -> &OpenMlsKeyValueStore {
         &self.openmls_values
     }
-    pub fn key_package_counter(&self) -> u64 {
-        self.key_package_counter
+    pub fn set_key_package(&mut self, agent_id: &str, key_package: KeyPackage) {
+        let log_index = self.key_package_log.len();
+        self.key_package_log.push(key_package);
+        self.agent_ids.insert(agent_id.to_string(), log_index);
     }
-    pub fn increment_key_package_counter(&mut self) -> Result<(), String> {
-        self.key_package_counter = self
-            .key_package_counter
-            .checked_add(1)
-            .ok_or_else(|| "Key package counter overflow".to_string())?;
-        Ok(())
+    pub fn agent_ids(&self) -> Vec<String> {
+        self.agent_ids.keys().cloned().collect()
     }
-    pub fn key_packages(&self) -> &HashMap<String, KeyPackage> {
-        &self.key_packages
-    }
-    pub fn add_key_package(&mut self, credential_str: &str, key_package: KeyPackage) {
-        self.key_packages
-            .insert(credential_str.to_string(), key_package);
-    }
-    pub fn group_ids(&self) -> &Vec<String> {
-        &self.group_ids
+    pub fn group_ids(&self) -> Vec<String> {
+        self.group_ids.clone()
     }
     pub fn add_group_id(&mut self, group_id: String) {
         self.group_ids.push(group_id);
