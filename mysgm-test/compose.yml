@@ -1,7 +1,7 @@
 ---
 services:
   mysgm_builder:
-    image: rust:1.89
+    image: rust:1.89-bullseye
     command: ["cargo", "build", "--release"]
     working_dir: /usr/local/src/mysgm
     volumes:
