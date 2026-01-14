@@ -17,3 +17,7 @@ serde = "1.0"
 serde_json = "1.0"
 serde_with = {version = "3.14", features = ["hex"] }
 tls_codec = "0.4"
+
+[[bin]]
+name = "mysgm"
+path = "src/main.rs"

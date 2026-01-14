@@ -1,14 +1,20 @@
----
+version: "3.8"
+
 services:
   mysgm_builder:
-    image: rust:1.89-bullseye
-    command: ["cargo", "build", "--release"]
+    build:
+      context: ../workspace
+      dockerfile: Dockerfile.builder
+    command: ["cargo", "build", "--release", "--target=aarch64-unknown-linux-gnu"]
     working_dir: /usr/local/src/mysgm
     volumes:
       - ../workspace:/usr/local/src
+
   dht:
     build: ../workspace/opendht
-    network_mode: host
+    ports:
+      - "8000:8080"
+      - "4222:4222/udp"
     command: ["dhtnode", "-p", "4222", "--proxyserver", "8000", "-D", "-v", "-s", "-f", "/tmp/dht"]
     restart: unless-stopped
     volumes:

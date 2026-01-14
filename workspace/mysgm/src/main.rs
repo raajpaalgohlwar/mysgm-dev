@@ -108,7 +108,8 @@ fn main() {
     let args = CliArgs::parse();
     log::info!("Command-line arguments: {args:?}");
     // dht adapter
-    let adapter = OpenDhtRestAdapter::new("localhost", 8000);
+    // let adapter = OpenDhtRestAdapter::new("localhost", 8000);
+    let adapter = FileAdapter::new("/tmp");
     log::info!("OpenDHT REST adapter: {adapter:?}");
     // file adapter
     //let adapter = FileAdapter::new("/tmp");
