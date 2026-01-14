@@ -10,7 +10,8 @@ use opendht::OpenDhtRestAdapter;
 use provider::MySgmProvider;
 use state::MySgmState;
 
-use clap::{Parser, Subcommand};
+///use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use core::error::Error;
 use hex::encode as hex_encode;
 use openmls::{
@@ -50,6 +51,18 @@ struct CliArgs {
     /// Command to execute
     #[command(subcommand)]
     main_command: MainCommands,
+    /// Storage adapter to use for sharing state between agents
+    #[arg(long, value_enum, default_value = "file")]
+    adapter: AdapterKind,
+    /// Directory to use with the file adapter
+    #[arg(long, default_value = "/tmp")]
+    file_path: String,
+    /// DHT REST proxy host
+    #[arg(long, default_value = "localhost")]
+    dht_host: String,
+    /// DHT REST proxy port
+    #[arg(long, default_value_t = 8000)]
+    dht_port: u16,
 }
 
 #[derive(Debug, Subcommand)]
@@ -88,6 +101,38 @@ enum GroupCommands {
     Update {},
 }
 
+#[derive(Clone, Debug, ValueEnum)]
+enum AdapterKind {
+    File,
+    Dht,
+}
+
+trait StorageAdapter {
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Box<dyn Error>>;
+    fn put_checked(&self, key: &str, value: &[u8]) -> Result<(), Box<dyn Error>>;
+}
+
+impl StorageAdapter for FileAdapter {
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Box<dyn Error>> {
+        FileAdapter::get(self, key)
+    }
+
+    fn put_checked(&self, key: &str, value: &[u8]) -> Result<(), Box<dyn Error>> {
+        FileAdapter::put_checked(self, key, value)
+    }
+}
+
+impl StorageAdapter for OpenDhtRestAdapter {
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, Box<dyn Error>> {
+        OpenDhtRestAdapter::get(self, key)
+    }
+
+    fn put_checked(&self, key: &str, value: &[u8]) -> Result<(), Box<dyn Error>> {
+        OpenDhtRestAdapter::put_checked(self, key, value)
+    }
+}
+
+
 pub fn key_package_key(index: u64) -> String {
     format!("kp{index}")
 }
@@ -107,6 +152,8 @@ fn main() {
     // cli args
     let args = CliArgs::parse();
     log::info!("Command-line arguments: {args:?}");
+
+    /*
     // dht adapter
     // let adapter = OpenDhtRestAdapter::new("localhost", 8000);
     let adapter = FileAdapter::new("/tmp");
@@ -114,6 +161,17 @@ fn main() {
     // file adapter
     //let adapter = FileAdapter::new("/tmp");
     //log::info!("File adapter: {adapter:?}");
+    */
+
+    let adapter: Box<dyn StorageAdapter> = match args.adapter {
+    AdapterKind::File => Box::new(FileAdapter::new(&args.file_path)),
+    AdapterKind::Dht => Box::new(OpenDhtRestAdapter::new(&args.dht_host, args.dht_port)),
+    };
+    log::info!("Storage adapter: {}", match args.adapter {
+        AdapterKind::File => "file",
+        AdapterKind::Dht => "dht",
+    });
+
     // crypto
     let crypto: RustCrypto = Default::default();
     // state

@@ -5,6 +5,8 @@ services:
     build:
       context: ../workspace
       dockerfile: Dockerfile.builder
+    environment:
+      - CARGO_TARGET_DIR=/tmp/target
     command: ["cargo", "build", "--release", "--target=aarch64-unknown-linux-gnu"]
     working_dir: /usr/local/src/mysgm
     volumes:
