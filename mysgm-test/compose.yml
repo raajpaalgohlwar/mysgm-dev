@@ -15,7 +15,7 @@ services:
   dht:
     build: ../workspace/opendht
     ports:
-      - "8000:8080"
+      - "8000:8000"
       - "4222:4222/udp"
     command: ["dhtnode", "-p", "4222", "--proxyserver", "8000", "-D", "-v", "-s", "-f", "/tmp/dht"]
     restart: unless-stopped

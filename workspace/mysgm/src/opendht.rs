@@ -52,6 +52,7 @@ impl OpenDhtRestAdapter {
         .unwrap();
         let _response = ReqwestClient::new()
             .post(&request_url)
+            .header("Content-Type", "application/json")
             .body(request_payload)
             .send()
             .map_err(Box::new)?
@@ -63,7 +64,16 @@ impl OpenDhtRestAdapter {
         if let Ok(Some(_)) = self.get(key) {
             Err("Key already exists".into())
         } else {
-            self.put(key, value)
+            match self.put(key, value) {
+                Ok(()) => Ok(()),
+                Err(err) => {
+                    if let Ok(Some(_)) = self.get(key) {
+                        Ok(())
+                    } else {
+                        Err(err)
+                    }
+                }
+            }
         }
     }
 }

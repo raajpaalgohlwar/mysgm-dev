@@ -95,8 +95,16 @@ enum GroupCommands {
         #[arg(long)]
         length: usize,
     },
-    Add {},
-    Remove {},
+    //Add {},
+    //Remove {},
+    Add {
+        /// Agent IDs (pids) to add; if empty, read from stdin one per line.
+        pids: Vec<String>,
+    },
+    Remove {
+        /// Leaf indexes to remove; if empty, read from stdin one per line.
+        indexes: Vec<u32>,
+    },
     Members {},
     Update {},
 }
@@ -475,19 +483,24 @@ fn main() {
                         );
                     }
                 }
-                GroupCommands::Remove {} => {
-                    let handle = stdin().lock();
-                    log::debug!("Reading lines from stdin as agents to add");
-                    let mut indexes = Vec::new();
-                    for line in handle.lines() {
-                        match line {
-                            Ok(l) => {
-                                log::info!("index: {l}");
-                                indexes.push(LeafNodeIndex::new(l.parse::<u32>().unwrap()));
-                            }
-                            Err(e) => {
-                                log::error!("Error reading line: {e}");
-                                break;
+                GroupCommands::Remove { indexes } => {
+                    let mut indexes: Vec<LeafNodeIndex> = indexes
+                        .iter()
+                        .map(|index| LeafNodeIndex::new(*index))
+                        .collect();
+                    if indexes.is_empty() {
+                        let handle = stdin().lock();
+                        log::debug!("Reading lines from stdin as indexes to remove");
+                        for line in handle.lines() {
+                            match line {
+                                Ok(l) => {
+                                    log::info!("index: {l}");
+                                    indexes.push(LeafNodeIndex::new(l.parse::<u32>().unwrap()));
+                                }
+                                Err(e) => {
+                                    log::error!("Error reading line: {e}");
+                                    break;
+                                }
                             }
                         }
                     }
@@ -523,27 +536,33 @@ fn main() {
                         }
                     }
                 }
-                GroupCommands::Add {} => {
-                    let handle = stdin().lock();
-                    log::debug!("Reading lines from stdin as agents to add");
+                GroupCommands::Add { pids } => {
+                    let mut input_pids = pids.clone();
                     let mut kps = Vec::new();
-                    for line in handle.lines() {
-                        match line {
-                            Ok(l) => {
-                                log::info!("pid: {l}");
-                                match provider.state().key_package(&l) {
-                                    Some(kp) => {
-                                        log::info!("Key package for pid: {kp:?}");
-                                        kps.push(kp.clone());
-                                    }
-                                    None => {
-                                        panic!("No key package for pid: {l}");
-                                    }
+                    if input_pids.is_empty() {
+                        let handle = stdin().lock();
+                        log::debug!("Reading lines from stdin as agents to add");
+                        for line in handle.lines() {
+                            match line {
+                                Ok(l) => {
+                                    input_pids.push(l);
+                                }
+                                Err(e) => {
+                                    log::error!("Error reading line: {e}");
+                                    break;
                                 }
                             }
-                            Err(e) => {
-                                log::error!("Error reading line: {e}");
-                                break;
+                        }
+                    }
+                    for pid in input_pids {
+                        log::info!("pid: {pid}");
+                        match provider.state().key_package(&pid) {
+                            Some(kp) => {
+                                log::info!("Key package for pid: {kp:?}");
+                                kps.push(kp.clone());
+                            }
+                            None => {
+                                panic!("No key package for pid: {pid}");
                             }
                         }
                     }
@@ -626,123 +645,3 @@ fn main() {
     write_string_to_file(&args.state_path, json_encode(provider.state()).unwrap()).unwrap();
     // done
 }
-/*
-
-        }
-        MainCommands::CreateGroup { gid } => {
-            log::debug!("Attempting to create new group");
-            log::info!("Group label to use for new group: {gid}");
-            println!("{}", agent.create_group(gid).unwrap());
-            log::debug!("Created new group");
-            log::info!("Agent state after: {agent:?}");
-            log::debug!("Attempting to write state back to disk");
-            agent.save(&args.state_path).unwrap();
-            log::debug!("Wrote state to disk");
-        }
-        MainCommands::Group { gid, group_command } => match group_command {
-            GroupCommands::ExportSecret { label, length } => {
-                println!(
-                    "{}",
-                    hex_encode(agent.exporter(gid, label, &[], *length).unwrap())
-                );
-            }
-            GroupCommands::Members {} => {
-                for member in agent.group_members(gid).unwrap() {
-                    println!("{member}");
-                }
-            }
-        },
-        /*
-
-
-
-        Commands::AddToGroup { gid } => {
-            log::debug!("Attempting to load state from file");
-            let mut agent = MySgmAgent::load(&args.state_path).unwrap();
-            log::debug!("Loaded agent state");
-            log::info!("Agent state before: {agent:?}");
-            log::info!("Group for adding agents: {gid}");
-            /*
-            let handle = stdin().lock();
-            log::debug!("Reading lines from stdin as agents to add");
-            let mut pids = Vec::new();
-            for line in handle.lines() {
-                match line {
-                    Ok(l) => {
-                        log::info!("Agent id: {l}");
-                        pids.push(l);
-                    }
-                    Err(e) => {
-                        log::error!("Error reading line: {e}");
-                        break;
-                    }
-                }
-            }
-            let pid_strs: Vec<&str> = pids.iter().map(String::as_str).collect();
-            agent.add_to_group(gid, &pid_strs).unwrap();
-            log::info!("Agent state after: {agent:?}");
-            log::debug!("Attempting to write state back to disk");
-            agent.save(&args.state_path).unwrap();
-            log::debug!("Wrote state to disk");
-            */
-        }
-
-            */
-        MainCommands::TestKeyPackages {} => {
-            log::debug!("Create alice");
-            let mut alice = MySgmAgent::new("alice").unwrap();
-            log::debug!("Create bob");
-            let mut bob = MySgmAgent::new("bob").unwrap();
-            log::debug!("Created agents");
-            let mut kp_bytes_vec = Vec::new();
-            kp_bytes_vec.push(alice.new_key_package().unwrap());
-            kp_bytes_vec.push(bob.new_key_package().unwrap());
-            log::debug!("Generated key packages");
-            log::debug!("Processing key packages");
-            for kp_bytes in kp_bytes_vec {
-                alice.process_as_key_package(&kp_bytes).unwrap();
-                bob.process_as_key_package(&kp_bytes).unwrap();
-            }
-            log::debug!("Processed key packages");
-            log::debug!("Alice's peer list: {:?}", alice.pids());
-            log::debug!("Bob's peer list: {:?}", bob.pids());
-        }
-        MainCommands::TestAddToGroup {} => {
-            log::debug!("Create alice");
-            let mut alice = MySgmAgent::new("alice").unwrap();
-            log::debug!("Create bob");
-            let mut bob = MySgmAgent::new("bob").unwrap();
-            log::debug!("Created agents");
-            let mut kp_bytes_vec = Vec::new();
-            kp_bytes_vec.push(alice.new_key_package().unwrap());
-            kp_bytes_vec.push(bob.new_key_package().unwrap());
-            log::debug!("Generated key packages");
-            log::debug!("Processing key packages");
-            for kp_bytes in &kp_bytes_vec {
-                alice.process_as_key_package(kp_bytes).unwrap();
-                bob.process_as_key_package(kp_bytes).unwrap();
-            }
-            log::debug!("Processed key packages");
-            log::debug!("Alice creating group");
-            let gid = alice.create_group("group1").unwrap();
-            log::debug!("Alice created group");
-            log::debug!("Alice adding Bob to group");
-            let (cm_bytes, wm_bytes) = alice.add_to_group(&gid, &[&bob.my_pid()]).unwrap();
-            log::debug!("Alice added Bob to group");
-            log::debug!("Bob processing welcome message");
-            assert_eq!(&bob.process_as_welcome_message(&wm_bytes).unwrap(), &gid);
-            log::debug!("Bob processed welcome message and joined {gid}");
-            alice.merge(&gid).unwrap();
-            log::info!(
-                "Alice's group members: {:?}",
-                alice.group_members(&gid).unwrap()
-            );
-            log::info!(
-                "Bob's group members: {:?}",
-                bob.group_members(&gid).unwrap()
-            );
-        }
-    }
-    log::debug!("DONE!");
-}
-*/
