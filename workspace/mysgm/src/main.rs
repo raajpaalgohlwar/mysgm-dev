@@ -95,8 +95,6 @@ enum GroupCommands {
         #[arg(long)]
         length: usize,
     },
-    //Add {},
-    //Remove {},
     Add {
         /// Agent IDs (pids) to add; if empty, read from stdin one per line.
         pids: Vec<String>,
@@ -157,19 +155,9 @@ pub fn commit_key(group: &MlsGroup, provider: &MySgmProvider) -> Result<String, 
 
 fn main() {
     pretty_env_logger::init();
-    // cli args
+    // CLI args
     let args = CliArgs::parse();
     log::info!("Command-line arguments: {args:?}");
-
-    /*
-    // dht adapter
-    // let adapter = OpenDhtRestAdapter::new("localhost", 8000);
-    let adapter = FileAdapter::new("/tmp");
-    log::info!("OpenDHT REST adapter: {adapter:?}");
-    // file adapter
-    //let adapter = FileAdapter::new("/tmp");
-    //log::info!("File adapter: {adapter:?}");
-    */
 
     let adapter: Box<dyn StorageAdapter> = match args.adapter {
     AdapterKind::File => Box::new(FileAdapter::new(&args.file_path)),
@@ -270,7 +258,7 @@ fn main() {
             }
         }
     }
-    // download welcoem messages
+    // download welcome messages
     loop {
         let key = welcome_message_key(provider.state().welcome_counter());
         log::info!("Welcome message key to get: {key}");
@@ -594,8 +582,6 @@ fn main() {
                             }
                         }
                     }
-                    //let pid_strs: Vec<&str> = pids.iter().map(String::as_str).collect();
-                    //agent.add_to_group(gid, &pid_strs).unwrap();
                 }
                 GroupCommands::Update {} => {
                     let (commit, welcome_opt, _) = group
