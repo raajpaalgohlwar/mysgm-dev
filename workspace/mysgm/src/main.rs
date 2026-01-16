@@ -10,7 +10,6 @@ use opendht::OpenDhtRestAdapter;
 use provider::MySgmProvider;
 use state::MySgmState;
 
-///use clap::{Parser, Subcommand};
 use clap::{Parser, Subcommand, ValueEnum};
 use core::error::Error;
 use hex::encode as hex_encode;
