@@ -2,7 +2,7 @@
 
 ## 1) Initialize a Raspberry Pi 4 Model B
 
-The model used for this research was the Raspberry Pi 4 Model B. Use this once per Pi to get a clean, repeatable baseline before installing `mysgm`.
+The model used for this research was the Raspberry Pi 4 Model B. Use this once per Pi to get a clean, repeatable baseline before installing `mysgm`. See [README.md](./README.md) for codebase overview and usage.
 
 1. **Install Raspberry Pi OS (64-bit)**  
    Use Raspberry Pi Imager to flash the latest 64-bit Raspberry Pi OS onto a microSD card. Enable SSH and set a hostname in the advanced options.

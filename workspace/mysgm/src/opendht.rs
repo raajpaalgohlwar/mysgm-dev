@@ -33,10 +33,19 @@ impl OpenDhtRestAdapter {
             Ok(None)
         } else {
             let json_value: Value = json_decode(&response_body).map_err(Box::new)?;
-            let data = STANDARD
-                .decode(json_value["data"].as_str().unwrap_or_default())
-                .map_err(Box::new)?;
-            Ok(Some(data))
+            let data_str = match &json_value {
+                Value::Array(values) => values
+                    .iter()
+                    .find_map(|value| value.get("data").and_then(|data| data.as_str())),
+                Value::Object(_) => json_value.get("data").and_then(|data| data.as_str()),
+                _ => None,
+            };
+            match data_str {
+                Some(data) if !data.is_empty() => {
+                    Ok(Some(STANDARD.decode(data).map_err(Box::new)?))
+                }
+                _ => Ok(None),
+            }
         }
     }
     pub fn put(&self, key: &str, value: &[u8]) -> Result<(), Box<dyn Error>> {
@@ -47,7 +56,7 @@ impl OpenDhtRestAdapter {
         );
         let request_payload = json_encode(&json!({
             "data": STANDARD.encode(value),
-            "permanent": "true"
+            "permanent": true
         }))
         .unwrap();
         let _response = ReqwestClient::new()

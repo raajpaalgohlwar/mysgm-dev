@@ -412,22 +412,24 @@ fn main() {
             }
         }
         MainCommands::Advertise {} => {
-            let kp_msg = MlsMessageOut::from(
-                KeyPackage::builder()
-                    .leaf_node_capabilities(capabilities.clone())
-                    .mark_as_last_resort()
-                    .build(
-                        provider.state().my_ciphersuite(),
-                        &provider,
-                        &provider,
-                        cred_with_key.clone(),
-                    )
-                    .unwrap()
-                    .key_package()
-                    .clone(),
-            )
-            .tls_serialize_detached()
-            .unwrap();
+            let key_package_bundle = KeyPackage::builder()
+                .leaf_node_capabilities(capabilities.clone())
+                .mark_as_last_resort()
+                .build(
+                    provider.state().my_ciphersuite(),
+                    &provider,
+                    &provider,
+                    cred_with_key.clone(),
+                )
+                .unwrap();
+            let key_package = key_package_bundle.key_package().clone();
+            let my_pid = provider.state().my_pid().to_string();
+            provider
+                .state_mut()
+                .set_key_package(&my_pid, key_package.clone());
+            let kp_msg = MlsMessageOut::from(key_package)
+                .tls_serialize_detached()
+                .unwrap();
             log::info!("Key package to put: {}", hex_encode(&kp_msg));
             let mut index = provider.state().key_package_counter();
             loop {
