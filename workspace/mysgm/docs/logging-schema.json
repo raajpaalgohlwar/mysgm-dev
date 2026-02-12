@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MySGM Metrics Logging Schema",
+  "description": "JSON Lines schema for structured logging of MLS operations, DHT I/O, and synchronization behavior.",
+  "type": "object",
+  "required": [
+    "ts_start_ms",
+    "ts_end_ms",
+    "duration_ms",
+    "op",
+    "result"
+  ],
+  "properties": {
+    "ts_start_ms": { "type": "integer" },
+    "ts_end_ms": { "type": "integer" },
+    "duration_ms": { "type": "integer" },
+    "node_id": { "type": ["string", "null"] },
+    "gid": { "type": ["string", "null"] },
+    "op": {
+      "type": "string",
+      "enum": [
+        "advertise",
+        "group_create",
+        "group_add",
+        "group_remove",
+        "group_update",
+        "welcome_download",
+        "welcome_process",
+        "commit_download",
+        "commit_merge",
+        "dht_get",
+        "dht_put"
+      ]
+    },
+    "result": { "type": "string", "enum": ["ok", "error"] },
+    "error": { "type": ["string", "null"] },
+    "members_before": { "type": ["integer", "null"] },
+    "members_after": { "type": ["integer", "null"] },
+    "commit_bytes": { "type": ["integer", "null"] },
+    "welcome_bytes": { "type": ["integer", "null"] },
+    "update_count": { "type": ["integer", "null"] },
+    "welcome_index": { "type": ["integer", "null"] },
+    "commit_key": { "type": ["string", "null"] },
+    "dht_key": { "type": ["string", "null"] },
+    "payload_bytes": { "type": ["integer", "null"] },
+    "http_status": { "type": ["integer", "null"] },
+    "welcome_processed": { "type": ["boolean", "null"] },
+    "commit_merged": { "type": ["boolean", "null"] }
+  },
+  "additionalProperties": false
+}
