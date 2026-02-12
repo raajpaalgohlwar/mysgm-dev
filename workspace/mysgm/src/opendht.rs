@@ -1,5 +1,7 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use core::error::Error;
+
+use crate::metrics::{MetricsEvent, log_event, now_ms};
 use reqwest::blocking::Client as ReqwestClient;
 use serde_json::{Value, from_str as json_decode, json, to_string as json_encode};
 
@@ -22,13 +24,22 @@ impl OpenDhtRestAdapter {
             "http://{}:{}/key/{}",
             self.proxy_address, self.proxy_port, key
         );
-        let response = ReqwestClient::new()
-            .get(&request_url)
-            .send()
-            .map_err(Box::new)?
-            .error_for_status()
-            .map_err(Box::new)?;
+        let started = now_ms();
+        let response = ReqwestClient::new().get(&request_url).send().map_err(Box::new)?;
+        let status = response.status();
         let response_body = response.text()?;
+        let mut event = MetricsEvent::new("dht_get", started, now_ms());
+        event.dht_key = Some(key.to_string());
+        event.http_status = Some(status.as_u16());
+        event.payload_bytes = Some(response_body.len());
+        if !status.is_success() {
+            event.result = "error".to_string();
+            event.error = Some(format!("HTTP status {status}"));
+        }
+        log_event(&event);
+        if !status.is_success() {
+            return Err(format!("HTTP status {status}").into());
+        }
         if response_body.is_empty() {
             Ok(None)
         } else {
@@ -59,14 +70,26 @@ impl OpenDhtRestAdapter {
             "permanent": true
         }))
         .unwrap();
-        let _response = ReqwestClient::new()
+        let started = now_ms();
+        let response = ReqwestClient::new()
             .post(&request_url)
             .header("Content-Type", "application/json")
             .body(request_payload)
             .send()
-            .map_err(Box::new)?
-            .error_for_status()
             .map_err(Box::new)?;
+        let status = response.status();
+        let mut event = MetricsEvent::new("dht_put", started, now_ms());
+        event.dht_key = Some(key.to_string());
+        event.http_status = Some(status.as_u16());
+        event.payload_bytes = Some(value.len());
+        if !status.is_success() {
+            event.result = "error".to_string();
+            event.error = Some(format!("HTTP status {status}"));
+        }
+        log_event(&event);
+        if !status.is_success() {
+            return Err(format!("HTTP status {status}").into());
+        }
         Ok(())
     }
     pub fn put_checked(&self, key: &str, value: &[u8]) -> Result<(), Box<dyn Error>> {

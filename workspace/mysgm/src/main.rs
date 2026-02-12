@@ -1,11 +1,13 @@
 pub mod file_adapter;
 pub mod keys;
+pub mod metrics;
 pub mod opendht;
 pub mod provider;
 pub mod state;
 
 use file_adapter::FileAdapter;
 use keys::SignatureKeyPair;
+use metrics::{MetricsEvent, log_event, now_ms};
 use opendht::OpenDhtRestAdapter;
 use provider::MySgmProvider;
 use state::MySgmState;
@@ -62,6 +64,9 @@ struct CliArgs {
     /// DHT REST proxy port
     #[arg(long, default_value_t = 8000)]
     dht_port: u16,
+    /// File path for structured JSON metrics logs (JSONL)
+    #[arg(long, default_value = "mysgm-metrics.log")]
+    log_file: String,
 }
 
 #[derive(Debug, Subcommand)]
@@ -156,6 +161,7 @@ fn main() {
     pretty_env_logger::init();
     // CLI args
     let args = CliArgs::parse();
+    metrics::init_metrics_logger(&args.log_file).unwrap();
     log::info!("Command-line arguments: {args:?}");
 
     let adapter: Box<dyn StorageAdapter> = match args.adapter {
@@ -259,10 +265,18 @@ fn main() {
     }
     // download welcome messages
     loop {
-        let key = welcome_message_key(provider.state().welcome_counter());
+        let welcome_index = provider.state().welcome_counter();
+        let key = welcome_message_key(welcome_index);
         log::info!("Welcome message key to get: {key}");
+        let started = now_ms();
         match adapter.get(&key) {
             Ok(Some(wm_bytes)) => {
+                let mut download_event = MetricsEvent::new("welcome_download", started, now_ms());
+                download_event.node_id = Some(provider.state().my_pid().to_string());
+                download_event.welcome_index = Some(welcome_index);
+                download_event.dht_key = Some(key.clone());
+                download_event.payload_bytes = Some(wm_bytes.len());
+                log_event(&download_event);
                 provider.state_mut().increment_welcome_counter();
                 log::info!("Got welcome message bytes: {}", hex_encode(&wm_bytes));
                 match MlsMessageIn::tls_deserialize_exact(wm_bytes)
@@ -283,9 +297,24 @@ fn main() {
                                     .to_string();
                                 log::info!("Group with gid: {gid}");
                                 provider.state_mut().add_gid(gid.clone());
+                                let mut process_event =
+                                    MetricsEvent::new("welcome_process", started, now_ms());
+                                process_event.node_id = Some(provider.state().my_pid().to_string());
+                                process_event.gid = Some(gid);
+                                process_event.welcome_index = Some(welcome_index);
+                                process_event.welcome_processed = Some(true);
+                                log_event(&process_event);
                             }
                             Err(e) => {
                                 log::warn!("Failed to process welcome: {e}");
+                                let mut process_event =
+                                    MetricsEvent::new("welcome_process", started, now_ms());
+                                process_event.node_id = Some(provider.state().my_pid().to_string());
+                                process_event.welcome_index = Some(welcome_index);
+                                process_event.welcome_processed = Some(false);
+                                process_event.result = "error".to_string();
+                                process_event.error = Some(e.to_string());
+                                log_event(&process_event);
                             }
                         }
                     }
@@ -323,8 +352,15 @@ fn main() {
                 }
             };
             log::info!("Commit message key to get: {key}");
+            let started = now_ms();
             match adapter.get(&key) {
                 Ok(Some(cm_bytes)) => {
+                    let mut download_event = MetricsEvent::new("commit_download", started, now_ms());
+                    download_event.node_id = Some(provider.state().my_pid().to_string());
+                    download_event.gid = Some(gid.clone());
+                    download_event.commit_key = Some(key.clone());
+                    download_event.payload_bytes = Some(cm_bytes.len());
+                    log_event(&download_event);
                     log::info!("Got commit message bytes: {}", hex_encode(&cm_bytes));
                     let proto_msg = MlsMessageIn::tls_deserialize_exact(cm_bytes)
                         .unwrap()
@@ -336,6 +372,14 @@ fn main() {
                                 match group.merge_staged_commit(&provider, *commit_box) {
                                     Ok(_) => {
                                         log::info!("Merged commit into group state for gid: {gid}");
+                                        let mut merge_event =
+                                            MetricsEvent::new("commit_merge", started, now_ms());
+                                        merge_event.node_id =
+                                            Some(provider.state().my_pid().to_string());
+                                        merge_event.gid = Some(gid.clone());
+                                        merge_event.commit_key = Some(key.clone());
+                                        merge_event.commit_merged = Some(true);
+                                        log_event(&merge_event);
                                     }
                                     Err(e) if e.to_string().contains("UseAfterEviction") => {
                                         log::warn!(
@@ -346,6 +390,16 @@ fn main() {
                                     }
                                     Err(e) => {
                                         log::warn!("Failed to merge commit: {e}");
+                                        let mut merge_event =
+                                            MetricsEvent::new("commit_merge", started, now_ms());
+                                        merge_event.node_id =
+                                            Some(provider.state().my_pid().to_string());
+                                        merge_event.gid = Some(gid.clone());
+                                        merge_event.commit_key = Some(key.clone());
+                                        merge_event.commit_merged = Some(false);
+                                        merge_event.result = "error".to_string();
+                                        merge_event.error = Some(e.to_string());
+                                        log_event(&merge_event);
                                         break;
                                     }
                                 }
@@ -354,6 +408,15 @@ fn main() {
                         },
                         Err(e) => {
                             log::warn!("Failed to process commit message: {e}");
+                            let mut merge_event =
+                                MetricsEvent::new("commit_merge", started, now_ms());
+                            merge_event.node_id = Some(provider.state().my_pid().to_string());
+                            merge_event.gid = Some(gid.clone());
+                            merge_event.commit_key = Some(key.clone());
+                            merge_event.commit_merged = Some(false);
+                            merge_event.result = "error".to_string();
+                            merge_event.error = Some(e.to_string());
+                            log_event(&merge_event);
                             break;
                         }
                     }
@@ -385,6 +448,7 @@ fn main() {
             }
         }
         MainCommands::CreateGroup { gid } => {
+            let started = now_ms();
             let gid_transformed = format!(
                 "{}_{}",
                 gid,
@@ -407,11 +471,18 @@ fn main() {
                     )
                     .unwrap();
                     provider.state_mut().add_gid(gid_transformed.clone());
+                    let mut event = MetricsEvent::new("group_create", started, now_ms());
+                    event.node_id = Some(provider.state().my_pid().to_string());
+                    event.gid = Some(gid_transformed.clone());
+                    event.members_before = Some(0);
+                    event.members_after = Some(1);
+                    log_event(&event);
                     println!("{gid_transformed}");
                 }
             }
         }
         MainCommands::Advertise {} => {
+            let started = now_ms();
             let key_package_bundle = KeyPackage::builder()
                 .leaf_node_capabilities(capabilities.clone())
                 .mark_as_last_resort()
@@ -448,6 +519,10 @@ fn main() {
                     }
                 }
             }
+            let mut event = MetricsEvent::new("advertise", started, now_ms());
+            event.node_id = Some(provider.state().my_pid().to_string());
+            event.payload_bytes = Some(kp_msg.len());
+            log_event(&event);
         }
         MainCommands::Group { gid, group_command } => {
             let mut group =
@@ -473,6 +548,8 @@ fn main() {
                     }
                 }
                 GroupCommands::Remove { indexes } => {
+                    let started = now_ms();
+                    let members_before = group.members().count();
                     let mut indexes: Vec<LeafNodeIndex> = indexes
                         .iter()
                         .map(|index| LeafNodeIndex::new(*index))
@@ -497,13 +574,22 @@ fn main() {
                         .remove_members(&provider, &provider, indexes.as_slice())
                         .unwrap();
                     log::info!("Commit message: {:?}", commit);
+                    let commit_bytes = commit.tls_serialize_detached().unwrap();
                     let key = commit_key(&group, &provider).unwrap();
                     adapter
-                        .put_checked(&key, &commit.tls_serialize_detached().unwrap())
+                        .put_checked(&key, &commit_bytes)
                         .unwrap();
                     group.merge_pending_commit(&provider).unwrap();
+                    let members_after = group.members().count();
+                    let mut event = MetricsEvent::new("group_remove", started, now_ms());
+                    event.node_id = Some(provider.state().my_pid().to_string());
+                    event.gid = Some(gid.clone());
+                    event.members_before = Some(members_before);
+                    event.members_after = Some(members_after);
+                    event.commit_bytes = Some(commit_bytes.len());
                     if let Some(welcome) = welcome_opt {
                         log::info!("Welcome message: {:?}", welcome);
+                        event.welcome_bytes = Some(welcome.tls_serialize_detached().unwrap().len());
                         let mut index = provider.state().welcome_counter();
                         loop {
                             let key = welcome_message_key(index);
@@ -524,8 +610,11 @@ fn main() {
                             }
                         }
                     }
+                    log_event(&event);
                 }
                 GroupCommands::Add { pids } => {
+                    let started = now_ms();
+                    let members_before = group.members().count();
                     let mut input_pids = pids.clone();
                     let mut kps = Vec::new();
                     if input_pids.is_empty() {
@@ -559,17 +648,19 @@ fn main() {
                         .add_members_without_update(&provider, &provider, kps.as_slice())
                         .unwrap();
                     log::info!("Commit message: {:?}", commit);
+                    let commit_bytes = commit.tls_serialize_detached().unwrap();
                     let key = commit_key(&group, &provider).unwrap();
                     adapter
-                        .put_checked(&key, &commit.tls_serialize_detached().unwrap())
+                        .put_checked(&key, &commit_bytes)
                         .unwrap();
                     group.merge_pending_commit(&provider).unwrap();
                     log::info!("Welcome message: {:?}", welcome);
+                    let welcome_bytes = welcome.tls_serialize_detached().unwrap();
                     let mut index = provider.state().welcome_counter();
                     loop {
                         let key = welcome_message_key(index);
                         log::info!("Welcome message key: {key}");
-                        match adapter.put_checked(&key, &welcome.tls_serialize_detached().unwrap())
+                        match adapter.put_checked(&key, &welcome_bytes)
                         {
                             Ok(()) => {
                                 break;
@@ -583,8 +674,19 @@ fn main() {
                             }
                         }
                     }
+                    let members_after = group.members().count();
+                    let mut event = MetricsEvent::new("group_add", started, now_ms());
+                    event.node_id = Some(provider.state().my_pid().to_string());
+                    event.gid = Some(gid.clone());
+                    event.members_before = Some(members_before);
+                    event.members_after = Some(members_after);
+                    event.commit_bytes = Some(commit_bytes.len());
+                    event.welcome_bytes = Some(welcome_bytes.len());
+                    log_event(&event);
                 }
                 GroupCommands::Update {} => {
+                    let started = now_ms();
+                    let members_before = group.members().count();
                     let (commit, welcome_opt, _) = group
                         .self_update(
                             &provider,
@@ -596,13 +698,22 @@ fn main() {
                         .unwrap()
                         .into_messages();
                     log::info!("Commit message: {:?}", commit);
+                    let commit_bytes = commit.tls_serialize_detached().unwrap();
                     let key = commit_key(&group, &provider).unwrap();
                     adapter
-                        .put_checked(&key, &commit.tls_serialize_detached().unwrap())
+                        .put_checked(&key, &commit_bytes)
                         .unwrap();
                     group.merge_pending_commit(&provider).unwrap();
+                    let members_after = group.members().count();
+                    let mut event = MetricsEvent::new("group_update", started, now_ms());
+                    event.node_id = Some(provider.state().my_pid().to_string());
+                    event.gid = Some(gid.clone());
+                    event.members_before = Some(members_before);
+                    event.members_after = Some(members_after);
+                    event.commit_bytes = Some(commit_bytes.len());
                     if let Some(welcome) = welcome_opt {
                         log::info!("Welcome message: {:?}", welcome);
+                        event.welcome_bytes = Some(welcome.tls_serialize_detached().unwrap().len());
                         let mut index = provider.state().welcome_counter();
                         loop {
                             let key = welcome_message_key(index);
@@ -623,6 +734,8 @@ fn main() {
                             }
                         }
                     }
+                    event.update_count = Some(1);
+                    log_event(&event);
                 }
             }
         }
