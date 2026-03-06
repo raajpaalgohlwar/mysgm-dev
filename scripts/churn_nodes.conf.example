@@ -1,0 +1,39 @@
+# Copy to scripts/churn_nodes.conf and edit for your environment.
+
+# DHT endpoint (controller Macbook running OpenDHT REST proxy)
+DHT_HOST="100.79.143.10"
+DHT_PORT=8000
+
+# Local controller agent settings
+CONTROLLER_NAME="controller"
+CONTROLLER_STATE="/tmp/mysgm-controller.json"
+CONTROLLER_BIN="/Users/raajpaalgohlwar/Library/CloudStorage/OneDrive-Personal/Documents/Education/NPS/Thesis/mysgm-dev/workspace/mysgm/target/release/mysgm"
+CONTROLLER_LOG_FILE="/tmp/mysgm-metrics-controller.log"
+CONTROLLER_GID_PREFIX="group"
+
+# Remote Pi settings
+REMOTE_BIN="/home/pi/mysgm"
+REMOTE_STATE_DIR="/var/lib/mysgm"
+REMOTE_LOG_FILE="/var/lib/mysgm/mysgm-metrics.log"
+
+# Hosts must match entries in ~/.ssh/config (e.g., pi0, pi1, pi2, ...)
+NODES=(
+  "pi0"
+  "pi1"
+  "pi2"
+  "pi3"
+)
+
+# Orchestration behavior
+RESET_NODES=1
+RESET_CONTROLLER=1
+COPY_BINARY_TO_NODES=0
+CHURN_ROUNDS=5
+REMOVE_READD_PER_ROUND=1
+GROUP_UPDATE_PER_ROUND=1
+SECRET_LABEL="secret1"
+SECRET_LENGTH=32
+
+# Retry settings for transient DHT failures (e.g., HTTP 502)
+RETRY_MAX=5
+RETRY_DELAY_SEC=1
